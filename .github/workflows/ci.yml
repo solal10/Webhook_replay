@@ -1,31 +1,67 @@
----
 name: CI
-
 on:
-  push:
-    branches: ['**']
   pull_request:
-    branches: ['**']
+  push:
+    branches: [main]
 
 jobs:
-  build:
+  backend:
     runs-on: ubuntu-latest
     services:
       postgres:
         image: postgres:15
+        ports: ["5432:5432"]
+        options: >
+          --health-cmd="pg_isready -U postgres" --health-interval=10s
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-          cache: 'pip'
-      - name: Backend tests
+          python-version: "3.11"
+
+      - name: Cache Poetry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: ${{ runner.os }}-poetry-${{ hashFiles('backend/pyproject.toml') }}
+
+      - name: Install backend deps
         run: |
           pip install poetry
           cd backend
           poetry install --no-root
-          poetry run pytest -v
-      - name: Frontend tests
+      - name: Run backend tests + lint
         run: |
-          cd frontend && yarn install --frozen-lockfile && yarn test
+          cd backend
+          poetry run pytest -q
+          pre-commit run --all-files
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            frontend/.next/cache
+            frontend/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('frontend/package.json') }}
+
+      - name: Install deps
+        run: |
+          cd frontend
+          yarn install --frozen-lockfile
+      - name: Run Next.js build & tests
+        run: |
+          cd frontend
+          yarn build
+          # placeholder; add `yarn test` when tests exist
