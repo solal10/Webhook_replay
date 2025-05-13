@@ -13,7 +13,15 @@ dependencies = [
     "pydantic[email] (>=2.11.4,<3.0.0)"
 ]
 
+[tool.poetry]
+packages = [{include = "app"}]
+
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.5"
+httpx = "^0.28.1"
+
