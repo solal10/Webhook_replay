@@ -1,0 +1,24 @@
+---
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Backend tests
+        run: |
+          pip install poetry
+          cd backend && poetry install && poetry run pytest -q
+      - name: Frontend tests
+        run: |
+          cd frontend && yarn install --frozen-lockfile && yarn test
