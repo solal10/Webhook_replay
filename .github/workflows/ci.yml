@@ -18,7 +18,7 @@ jobs:
       - name: Backend tests
         run: |
           pip install poetry
-          cd backend && poetry install && poetry run pytest -q
+          cd backend && poetry install --no-root && poetry run pytest -q
       - name: Frontend tests
         run: |
           cd frontend && yarn install --frozen-lockfile && yarn test
