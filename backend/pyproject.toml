@@ -15,7 +15,8 @@ dependencies = [
     "pydantic-settings (>=2.0)",
     "alembic (>=1.15.2,<2.0.0)",
     "psycopg2-binary (>=2.9.10,<3.0.0)",
-    "sqlalchemy-utils (>=0.41.2,<0.42.0)"
+    "sqlalchemy-utils (>=0.41.2,<0.42.0)",
+    "passlib[bcrypt] (==1.7.4)"
 ]
 
 [tool.poetry]
