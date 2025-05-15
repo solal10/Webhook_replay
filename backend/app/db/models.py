@@ -1,5 +1,6 @@
 import enum
-from datetime import datetime
+from datetime import UTC, datetime
+from datetime import timezone as tz
 
 from sqlalchemy import (
     Boolean,
@@ -14,6 +15,10 @@ from sqlalchemy import (
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
+
+
+def utc_now():
+    return datetime.now(tz.utc)
 
 
 class DeliveryStatus(str, enum.Enum):
@@ -37,7 +42,7 @@ class ApiKey(Base):
     id = Column(Integer, primary_key=True)
     tenant_id = Column(Integer, ForeignKey("tenants.id", ondelete="CASCADE"))
     hashed_key = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
 
     tenant = relationship("Tenant", back_populates="api_keys")
 
@@ -61,7 +66,7 @@ class Event(Base):
     payload_path = Column(String, nullable=False)
     hash = Column(String, nullable=False)
     duplicate = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
 
     deliveries = relationship("Delivery", back_populates="event")
     tenant = relationship("Tenant", back_populates="events")
@@ -77,6 +82,6 @@ class Delivery(Base):
     status = Column(Enum(DeliveryStatus), nullable=False)
     attempt = Column(Integer, default=1)
     code = Column(Integer)
-    logged_at = Column(DateTime, default=datetime.utcnow)
+    logged_at = Column(DateTime, default=utc_now)
 
     event = relationship("Event", back_populates="deliveries")

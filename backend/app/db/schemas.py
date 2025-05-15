@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, ConfigDict, HttpUrl
 
 
 class TenantCreate(BaseModel):
@@ -9,20 +9,18 @@ class TenantCreate(BaseModel):
 
 
 class TenantOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     name: str
     token: str
 
-    class Config:
-        orm_mode = True
-
 
 class ApiKeyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     created_at: datetime
-
-    class Config:
-        orm_mode = True
 
 
 class TargetCreate(BaseModel):
@@ -31,29 +29,26 @@ class TargetCreate(BaseModel):
 
 
 class TargetOut(TargetCreate):
-    id: int
+    model_config = ConfigDict(from_attributes=True)
 
-    class Config:
-        orm_mode = True
+    id: int
 
 
 class EventOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     provider: str
     event_type: str
     duplicate: bool
     created_at: datetime
 
-    class Config:
-        orm_mode = True
-
 
 class DeliveryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     status: str
     attempt: int
     code: Optional[int]
     logged_at: datetime
-
-    class Config:
-        orm_mode = True
