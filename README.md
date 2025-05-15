@@ -11,11 +11,30 @@ A modern web application for managing and replaying webhook events.
 
 ## Development
 
+### Database
+
+The project uses PostgreSQL for data storage. You can start the database using Docker:
+
+```bash
+# Start the database
+./scripts/run_db.sh up
+
+# Stop the database
+./scripts/run_db.sh down
+```
+
+The database will be available at `postgresql://postgres:postgres@localhost:5432/webhooks`.
+
 ### Backend
 
 ```bash
 cd backend
 poetry install
+
+# Apply database migrations
+poetry run alembic upgrade head
+
+# Start the development server
 poetry run uvicorn app.main:app --reload
 ```
 
