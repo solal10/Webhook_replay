@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=os.getenv(
-            "ENV_FILE", str(Path(__file__).parent.parent.parent.parent / ".env")
+            "ENV_FILE", str(Path(__file__).parent.parent.parent / ".env")
         ),
         env_file_encoding="utf-8",
         extra="ignore",  # Allow extra fields in env file
