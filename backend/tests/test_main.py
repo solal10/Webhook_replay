@@ -6,6 +6,9 @@ def test_health_check(client: TestClient):
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ok"
-    assert "env" in data
-    assert data["env"]["db"].endswith("webhooks_test")
-    assert data["env"]["bucket"] == "webhook-payloads-test"
+    assert "settings" in data
+    settings = data["settings"]
+    assert "database_url" in settings
+    assert "stripe_signing_secret" in settings
+    assert "aws_region" in settings
+    assert "s3_bucket" in settings
