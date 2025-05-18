@@ -2,8 +2,11 @@ import os
 from pathlib import Path
 
 import pytest
+from app.db.models import Base
 from app.main import app
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 # Set test environment variables
 os.environ.update(
@@ -18,6 +21,32 @@ os.environ.update(
 )
 
 
+@pytest.fixture(scope="session")
+def engine():
+    engine = create_engine(os.environ["DATABASE_URL"])
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def setup_database(engine):
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    yield
+    Base.metadata.drop_all(engine)
+    engine.dispose()
+
+
 @pytest.fixture
 def client():
-    return TestClient(app)
+    from app.core.config import Settings, get_settings
+
+    # Override settings for testing
+    def get_test_settings() -> Settings:
+        settings = get_settings()
+        settings.database_url = os.environ["DATABASE_URL"]
+        return settings
+
+    app.dependency_overrides[get_settings] = get_test_settings
+    yield TestClient(app)
+    app.dependency_overrides.clear()

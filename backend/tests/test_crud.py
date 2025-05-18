@@ -1,16 +1,8 @@
 import pytest
 from app.db import crud, models, schemas
-from app.db.session import SessionLocal, engine
+from app.db.session import SessionLocal
 from sqlalchemy import exc
 from sqlalchemy.orm import Session
-
-
-@pytest.fixture(autouse=True)
-def setup_database():
-    models.Base.metadata.drop_all(bind=engine)
-    models.Base.metadata.create_all(bind=engine)
-    yield
-    models.Base.metadata.drop_all(bind=engine)
 
 
 @pytest.fixture
