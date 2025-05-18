@@ -5,7 +5,6 @@ from passlib.hash import bcrypt
 from sqlalchemy.orm import Session
 
 
-# ---------- Tenants ----------
 def create_tenant(db: Session, data: schemas.TenantCreate) -> models.Tenant:
     token = secrets.token_urlsafe(16)
     tenant = models.Tenant(name=data.name, token=token)
@@ -15,7 +14,6 @@ def create_tenant(db: Session, data: schemas.TenantCreate) -> models.Tenant:
     return tenant
 
 
-# ---------- API Keys ----------
 def issue_api_key(db: Session, tenant_id: int) -> str:
     raw = secrets.token_urlsafe(24)
     hashed = bcrypt.hash(raw)
@@ -25,17 +23,14 @@ def issue_api_key(db: Session, tenant_id: int) -> str:
     return raw
 
 
-def verify_api_key(db: Session, raw: str) -> models.Tenant | None:
+def verify_api_key(db: Session, raw: str):
     for ak in db.query(models.ApiKey).all():
         if bcrypt.verify(raw, ak.hashed_key):
             return ak.tenant
     return None
 
 
-# ---------- Targets ----------
-def upsert_target(
-    db: Session, tenant_id: int, data: schemas.TargetCreate
-) -> models.Target:
+def upsert_target(db: Session, tenant_id: int, data: schemas.TargetCreate):
     target = (
         db.query(models.Target)
         .filter_by(tenant_id=tenant_id, provider=data.provider)
@@ -51,7 +46,6 @@ def upsert_target(
     return target
 
 
-# ---------- Events ----------
 def list_events(db: Session, tenant_id: int, limit: int = 100):
     return (
         db.query(models.Event)
