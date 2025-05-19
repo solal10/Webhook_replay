@@ -14,16 +14,18 @@ os.environ.update(
         "DATABASE_URL": "postgresql://postgres:postgres@localhost:5432/webhooks_test",
         "STRIPE_SIGNING_SECRET": "whsec_test",
         "AWS_REGION": "us-east-1",
-        "S3_BUCKET": "webhook-payloads-test",
+        "EVENTS_BUCKET": "events-dev",
         "API_KEY_SALT": "test_salt",
         "FRONTEND_URL": "http://localhost:3000",
     }
 )
 
+from app.core.config import Settings, get_settings
+
 # Import app modules after setting environment variables
 from app.db import models
 from app.db.models import Base
-from app.db.session import SessionLocal
+from app.db.session import SessionLocal, engine
 from app.main import app
 
 
@@ -105,22 +107,17 @@ def setup_database(engine):
         raise
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def mock_aws_s3():
-    """Mock AWS services for testing"""
     with mock_aws():
-        s3 = boto3.client("s3", region_name=os.environ["AWS_REGION"])
-        s3.create_bucket(Bucket=os.environ["S3_BUCKET"])
+        s3 = boto3.client("s3", region_name=get_settings().aws_region)
+        s3.create_bucket(Bucket=get_settings().events_bucket)
         yield s3
 
 
 @pytest.fixture
 def settings():
-    from app.core.config import Settings
-
-    # Force reload settings from test environment
-    settings = Settings(_env_file=None)
-    return settings
+    return get_settings()
 
 
 @pytest.fixture

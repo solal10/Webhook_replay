@@ -8,6 +8,10 @@ class TenantCreate(BaseModel):
     name: str
 
 
+class StripeSecretUpdate(BaseModel):
+    signing_secret: str
+
+
 class TenantOut(BaseModel):
     id: int
     name: str

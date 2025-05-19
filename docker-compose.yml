@@ -14,3 +14,20 @@ services:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       retries: 5
+
+  localstack:
+    image: localstack/localstack:latest
+    container_name: webhook-localstack
+    restart: unless-stopped
+    environment:
+      - SERVICES=s3
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - EDGE_PORT=4566
+    ports:
+      - "4566:4566"
+    healthcheck:
+      test: ["CMD", "curl", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      retries: 5

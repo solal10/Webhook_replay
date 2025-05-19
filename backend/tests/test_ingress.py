@@ -112,15 +112,13 @@ def test_duplicate_event_detection(client, test_tenant, db, mock_aws_s3):
         json=payload,
         headers={"Stripe-Signature": stripe_sig},
     )
-    assert response2.status_code == 409  # Conflict for duplicate event
+    assert response2.status_code == 200  # Success for duplicate event
 
     # Verify only one event is stored
     events = db.query(models.Event).filter_by(tenant_id=test_tenant.id).all()
     logger.info(f"Found {len(events)} events")
     for i, event in enumerate(events):
-        logger.info(
-            f"Event {i}: hash={event.hash}, content_hash={event.content_hash}, duplicate={event.duplicate}"
-        )
+        logger.info(f"Event {i}: sha256={event.sha256}, duplicate={event.duplicate}")
     assert len(events) == 1  # Only one event should be stored
     assert events[0].duplicate == False  # And it should not be marked as duplicate
 

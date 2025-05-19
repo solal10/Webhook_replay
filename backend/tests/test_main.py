@@ -11,4 +11,4 @@ def test_health_check(client: TestClient):
     assert "database_url" in settings
     assert "stripe_signing_secret" in settings
     assert "aws_region" in settings
-    assert "s3_bucket" in settings
+    assert "events_bucket" in settings

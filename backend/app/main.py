@@ -31,10 +31,14 @@ def db_session():
 
 def get_s3_client():
     settings = get_settings()
-    return boto3.client(
+    s3 = boto3.client(
         "s3",
         region_name=settings.aws_region,
+        aws_access_key_id=settings.aws_access_key_id,
+        aws_secret_access_key=settings.aws_secret_access_key,
+        endpoint_url=settings.aws_endpoint_url,
     )
+    return s3
 
 
 def current_tenant(
@@ -58,7 +62,7 @@ async def health():
             "database_url": get_settings().database_url,
             "stripe_signing_secret": get_settings().stripe_signing_secret,
             "aws_region": get_settings().aws_region,
-            "s3_bucket": get_settings().s3_bucket,
+            "events_bucket": get_settings().events_bucket,
         },
     }
 
@@ -82,10 +86,26 @@ def who_am_i(tenant: models.Tenant = Depends(current_tenant)):
     return {"id": tenant.id, "name": tenant.name, "token": tenant.token}
 
 
+# ---------- stripe ----------
+@app.put("/tenants/{token}/stripe")
+def set_stripe_secret(
+    token: str, data: schemas.StripeSecretUpdate, db: Session = Depends(db_session)
+):
+    tenant = db.query(models.Tenant).filter_by(token=token).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Not Found")
+    tenant.stripe_signing_secret = data.signing_secret
+    db.commit()
+    return {"status": "ok"}
+
+
 # ---------- ingress ----------
 @app.post("/in/{token}")
 async def ingest_webhook(
-    token: str, request: Request, db: Session = Depends(db_session)
+    token: str,
+    request: Request,
+    db: Session = Depends(db_session),
+    s3_client: boto3.client = Depends(get_s3_client),
 ):
     import logging
 
@@ -137,6 +157,7 @@ async def ingest_webhook(
                 status_code=400, detail="Stripe webhooks not configured"
             )
 
+        # Verify event signature
         try:
             # Verify the event
             stripe.Webhook.construct_event(
@@ -160,68 +181,41 @@ async def ingest_webhook(
         if not payload:
             raise HTTPException(status_code=400, detail="Empty payload not allowed")
 
-        # Generate hash for duplicate detection
-        payload_hash = hashlib.sha256(raw).hexdigest()
-
-        # Store payload in S3 or locally in development
-        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-        s3_key = f"{tenant.id}/{timestamp}_{payload_hash}.json"
-
-        try:
-            s3 = get_s3_client()
-            s3.put_object(
-                Bucket=get_settings().s3_bucket,
-                Key=s3_key,
-                Body=raw,
-                ContentType="application/json",
-            )
-        except Exception as e:
-            # In development, store locally
-            import pathlib
-
-            payload_dir = pathlib.Path(__file__).parent.parent / "payloads"
-            payload_dir.mkdir(exist_ok=True)
-            local_path = payload_dir / s3_key
-            local_path.parent.mkdir(parents=True, exist_ok=True)
-            local_path.write_bytes(raw)
-
-        # We use two hashes:
-        # 1. content_hash: based only on the payload content, used for duplicate detection
-        # 2. unique_hash: includes timestamp and a random component, used as the event's unique identifier
-        content_hash = hashlib.sha256(raw).hexdigest()
-        import uuid
-
-        unique_hash = hashlib.sha256(
-            f"{raw}_{timestamp}_{uuid.uuid4()}".encode()
-        ).hexdigest()
-
-        # Check for duplicates and store event in database
-        existing_event = (
-            db.query(models.Event)
-            .filter_by(tenant_id=tenant.id, content_hash=content_hash)
-            .first()
-        )
-
-        if existing_event:
+        # Check for size limit
+        if len(raw) > MAX_PAYLOAD_SIZE:
             raise HTTPException(
-                status_code=409,
-                detail={
-                    "status": "duplicate",
-                    "original_event_id": existing_event.id,
-                },
+                status_code=400,
+                detail=f"Payload too large. Maximum size is {MAX_PAYLOAD_SIZE} bytes",
             )
 
-        event = models.Event(
-            tenant_id=tenant.id,
-            provider="stripe",  # TODO: Make this configurable
-            event_type=payload.get("type", "unknown"),
-            payload_path=s3_key,
-            hash=unique_hash,  # Use the unique hash for the event
-            content_hash=content_hash,  # Store the content hash for duplicate detection
-            duplicate=False,  # No need to mark as duplicate since we return 409
+        # Compute SHA-256 hash
+        sha256 = hashlib.sha256(raw).hexdigest()
+
+        # Check if event already exists
+        existing_event = (
+            db.query(models.Event).filter_by(tenant_id=tenant.id, sha256=sha256).first()
         )
-        db.add(event)
-        db.commit()
+        if not existing_event:
+            event = models.Event(
+                tenant_id=tenant.id, sha256=sha256, payload=payload, duplicate=False
+            )
+            db.add(event)
+            db.commit()
+
+            # Upload payload to S3
+            settings = get_settings()
+            s3_key = f"{tenant.id}/{sha256}.json"
+
+            try:
+                s3_client.put_object(
+                    Bucket=settings.events_bucket,
+                    Key=s3_key,
+                    Body=raw,
+                    ContentType="application/json",
+                )
+            except Exception as e:
+                logger.error(f"Failed to upload payload to S3: {e}")
+                # Continue despite S3 error
 
         return {"status": "received"}
     except json.JSONDecodeError:
