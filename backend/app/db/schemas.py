@@ -12,6 +12,7 @@ class TenantOut(BaseModel):
     id: int
     name: str
     token: str
+    stripe_signing_secret: str | None = None
 
     class Config:
         orm_mode = True

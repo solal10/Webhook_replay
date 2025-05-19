@@ -9,7 +9,7 @@ def create_tenant(db: Session, data: schemas.TenantCreate) -> models.Tenant:
     token = secrets.token_urlsafe(16)
     tenant = models.Tenant(name=data.name, token=token)
     db.add(tenant)
-    db.commit()
+    db.flush()
     db.refresh(tenant)
     return tenant
 
@@ -19,7 +19,7 @@ def issue_api_key(db: Session, tenant_id: int) -> str:
     hashed = bcrypt.hash(raw)
     key = models.ApiKey(tenant_id=tenant_id, hashed_key=hashed)
     db.add(key)
-    db.commit()
+    db.flush()
     return raw
 
 
@@ -41,7 +41,7 @@ def upsert_target(db: Session, tenant_id: int, data: schemas.TargetCreate):
     else:
         target = models.Target(tenant_id=tenant_id, **data.dict())
         db.add(target)
-    db.commit()
+    db.flush()
     db.refresh(target)
     return target
 

@@ -31,6 +31,7 @@ class Tenant(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
     token = Column(String, unique=True, nullable=False)
+    stripe_signing_secret = Column(String, nullable=True)
 
     api_keys = relationship("ApiKey", back_populates="tenant")
     targets = relationship("Target", back_populates="tenant")
@@ -64,15 +65,15 @@ class Event(Base):
     provider = Column(String, nullable=False)
     event_type = Column(String, nullable=False)
     payload_path = Column(String, nullable=False)
-    hash = Column(String, nullable=False)
+    hash = Column(String, nullable=False)  # Unique identifier for the event
+    content_hash = Column(
+        String, nullable=False
+    )  # Hash of the raw content, used for duplicate detection
     duplicate = Column(Boolean, default=False)
     created_at = Column(DateTime, default=utc_now)
 
     deliveries = relationship("Delivery", back_populates="event")
     tenant = relationship("Tenant", back_populates="events")
-    __table_args__ = (
-        UniqueConstraint("tenant_id", "hash", name="uq_event_hash_per_tenant"),
-    )
 
 
 class Delivery(Base):

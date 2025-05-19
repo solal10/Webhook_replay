@@ -1,10 +1,4 @@
-from app.main import app
-from fastapi.testclient import TestClient
-
-client = TestClient(app)
-
-
-def test_signup_and_whoami():
+def test_signup_and_whoami(client):
     # create account
     resp = client.post("/signup", json={"name": "TestCo"})
     assert resp.status_code == 200
