@@ -31,15 +31,17 @@ def verify_api_key(db: Session, raw: str):
 
 
 def upsert_target(db: Session, tenant_id: int, data: schemas.TargetCreate):
-    target = (
-        db.query(models.Target)
-        .filter_by(tenant_id=tenant_id, provider=data.provider)
-        .first()
-    )
+    target = db.query(models.Target).filter_by(tenant_id=tenant_id).first()
     if target:
-        target.url = data.url
+        target.url = str(data.url)
+        target.headers = data.headers
     else:
-        target = models.Target(tenant_id=tenant_id, **data.dict())
+        target = models.Target(
+            tenant_id=tenant_id,
+            url=str(data.url),
+            headers=data.headers,
+            provider=data.provider or "stripe",
+        )
         db.add(target)
     db.flush()
     db.refresh(target)

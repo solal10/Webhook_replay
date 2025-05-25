@@ -24,7 +24,8 @@ class TenantOut(BaseModel):
 
 class TargetCreate(BaseModel):
     url: HttpUrl
-    provider: str = "stripe"
+    provider: str | None = None
+    headers: dict | None = None
 
 
 class TargetOut(TargetCreate):

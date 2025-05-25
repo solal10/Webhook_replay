@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     aws_access_key_id: str = "test"
     aws_secret_access_key: str = "test"
     aws_endpoint_url: str | None = None
+    redis_url: str = "redis://localhost:6379/0"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

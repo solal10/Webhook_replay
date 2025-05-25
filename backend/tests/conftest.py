@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 # Set test environment variables
 os.environ.update(
     {
-        "DATABASE_URL": "postgresql://postgres:postgres@localhost:5432/webhooks_test",
+        "DATABASE_URL": "postgresql://postgres:postgres@db:5432/webhooks_test",
         "STRIPE_SIGNING_SECRET": "whsec_test",
         "AWS_REGION": "us-east-1",
         "EVENTS_BUCKET": "events-dev",

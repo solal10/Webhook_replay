@@ -8,6 +8,7 @@ from app.core.config import get_settings
 from app.db import crud, models, schemas
 from app.db.session import SessionLocal
 from app.services import stripe_verify
+from app.tasks import forward_event
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
@@ -84,6 +85,20 @@ def signup(data: schemas.TenantCreate, db: Session = Depends(db_session)):
 @app.get("/me")
 def who_am_i(tenant: models.Tenant = Depends(current_tenant)):
     return {"id": tenant.id, "name": tenant.name, "token": tenant.token}
+
+
+# ---------- targets ----------
+@app.post(
+    "/targets", response_model=schemas.TargetOut, status_code=status.HTTP_201_CREATED
+)
+def create_target(
+    data: schemas.TargetCreate,
+    tenant: models.Tenant = Depends(current_tenant),
+    db: Session = Depends(db_session),
+):
+    target = crud.upsert_target(db, tenant.id, data)
+    db.commit()
+    return target
 
 
 # ---------- stripe ----------
@@ -201,6 +216,11 @@ async def ingest_webhook(
             )
             db.add(event)
             db.commit()
+
+            # Queue event for delivery
+            logger.info(f"Queuing event {event.id} for delivery")
+            result = forward_event.apply_async(args=[str(event.id)], queue="deliveries")
+            logger.info(f"Task queued with ID {result.id}")
 
             # Upload payload to S3
             settings = get_settings()

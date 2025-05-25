@@ -51,6 +51,7 @@ class Target(Base):
     tenant_id = Column(Integer, ForeignKey("tenants.id", ondelete="CASCADE"))
     url = Column(String, nullable=False)
     provider = Column(String, default="stripe")
+    headers = Column(JSON, nullable=True)
 
     tenant = relationship("Tenant", back_populates="targets")
 
@@ -67,3 +68,14 @@ class Event(Base):
     tenant = relationship("Tenant", back_populates="events")
 
     __table_args__ = (Index("ix_event_unique", "tenant_id", "sha256"),)
+
+
+class Delivery(Base):
+    __tablename__ = "deliveries"
+    id = Column(Integer, primary_key=True)
+    event_id = Column(Integer, ForeignKey("events.id", ondelete="CASCADE"))
+    status = Column(Integer, nullable=False)
+    response = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+
+    event = relationship("Event")

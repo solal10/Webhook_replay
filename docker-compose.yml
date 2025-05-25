@@ -31,3 +31,58 @@ services:
       test: ["CMD", "curl", "http://localhost:4566/_localstack/health"]
       interval: 5s
       retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: webhook-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 5
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: webhook-worker
+    restart: unless-stopped
+    command: poetry run celery -A app.celery_app worker -Q deliveries --loglevel=info
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/webhooks
+      - STRIPE_SIGNING_SECRET=whsec_test_123
+      - AWS_REGION=us-east-1
+      - API_KEY_SALT=test_salt
+      - FRONTEND_URL=http://localhost:3000
+      - EVENTS_BUCKET=events-dev
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - db
+      - redis
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: webhook-api
+    restart: unless-stopped
+    command: poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/webhooks
+      - STRIPE_SIGNING_SECRET=whsec_test_123
+      - AWS_REGION=us-east-1
+      - API_KEY_SALT=test_salt
+      - FRONTEND_URL=http://localhost:3000
+      - EVENTS_BUCKET=events-dev
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - db
+      - redis
