@@ -1,8 +1,10 @@
 import os
 from pathlib import Path
+from unittest.mock import patch
 
 import boto3
 import pytest
+from celery import Task
 from fastapi.testclient import TestClient
 from moto import mock_aws
 from sqlalchemy import create_engine
@@ -32,21 +34,33 @@ from app.db.session import SessionLocal, engine
 from app.main import app
 
 
+@pytest.fixture(autouse=True)
+def celery_task_always_eager():
+    with patch.object(Task, "apply_async") as mock:
+
+        class MockAsyncResult:
+            def __init__(self):
+                self.id = "mock-task-id"
+
+        mock.return_value = MockAsyncResult()
+        yield mock
+
+
 @pytest.fixture(scope="session")
-def engine():
+def db_engine():
     engine = create_engine(os.environ["DATABASE_URL"])
     yield engine
     engine.dispose()
 
 
 @pytest.fixture
-def db(engine) -> Session:
+def db(db_engine) -> Session:
     import logging
 
     logger = logging.getLogger(__name__)
 
     logger.info("Starting database transaction")
-    connection = engine.connect()
+    connection = db_engine.connect()
     transaction = connection.begin()
     session = Session(bind=connection)
     logger.info(f"Created test session with ID {id(session)}")
@@ -83,12 +97,13 @@ def test_tenant(db: Session) -> models.Tenant:
 
 
 @pytest.fixture(autouse=True)
-def setup_database(engine):
+def setup_database(db_engine):
     import logging
 
     logger = logging.getLogger(__name__)
     logger.info("Setting up database...")
     try:
+        Base.metadata.create_all(db_engine)
         # Log table constraints before creation
         for table in Base.metadata.tables.values():
             logger.info(f"Table {table.name} constraints:")
