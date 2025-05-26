@@ -12,6 +12,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.orm import declarative_base, relationship
@@ -75,7 +76,9 @@ class Delivery(Base):
     id = Column(Integer, primary_key=True)
     event_id = Column(Integer, ForeignKey("events.id", ondelete="CASCADE"))
     status = Column(Integer, nullable=False)
-    response = Column(String, nullable=True)
+    response = Column(Text)
+    attempts = Column(Integer, nullable=False, default=0)
+    next_run = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utc_now)
 
     event = relationship("Event")

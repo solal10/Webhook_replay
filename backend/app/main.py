@@ -149,6 +149,10 @@ async def ingest_webhook(
         logger.info("Reading request body...")
         raw = await request.body()
         logger.info("Request body read successfully")
+        raw_str = raw.decode()
+        logger.info(f"Raw body str: {raw_str}")
+        logger.info(f"Raw body bytes: {raw}")
+        logger.info(f"Raw body repr: {repr(raw_str)}")
 
         # Check for empty payload
         if not raw:
@@ -174,14 +178,16 @@ async def ingest_webhook(
 
         # Verify event signature
         try:
+            logger.info(f"Tenant stripe_signing_secret: {tenant.stripe_signing_secret}")
             # Verify the event
-            stripe.Webhook.construct_event(
-                payload=raw,
-                sig_header=stripe_sig,
+            stripe_verify.verify(
+                raw_body=raw,
+                header=stripe_sig,
                 secret=tenant.stripe_signing_secret,
                 tolerance=300,
             )
-        except SignatureVerificationError:
+            logger.info("Stripe signature verification successful")
+        except stripe_verify.StripeSignatureError:
             raise HTTPException(status_code=400, detail="Invalid Stripe signature")
 
         # Parse JSON payload after signature verification
@@ -219,8 +225,16 @@ async def ingest_webhook(
 
             # Queue event for delivery
             logger.info(f"Queuing event {event.id} for delivery")
-            result = forward_event.apply_async(args=[str(event.id)], queue="deliveries")
-            logger.info(f"Task queued with ID {result.id}")
+            logger.info(
+                f"Event data: tenant_id={event.tenant_id}, sha256={event.sha256}"
+            )
+            try:
+                result = forward_event.delay(str(event.id), 1)
+                logger.info(f"Task queued with ID {result.id}")
+                logger.info(f"Task result type: {type(result)}")
+                logger.info(f"Task result details: {result.__dict__}")
+            except Exception as e:
+                logger.error(f"Failed to queue task: {e}", exc_info=True)
 
             # Upload payload to S3
             settings = get_settings()
