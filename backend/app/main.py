@@ -114,6 +114,36 @@ def set_stripe_secret(
     return {"status": "ok"}
 
 
+# ---------- events ----------
+@app.post(
+    "/events/{event_id}/replay",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=schemas.EventReplayResponse,
+    description="Replay any stored event. Requires your API key.",
+)
+def replay_event(
+    event_id: int,
+    tenant: models.Tenant = Depends(current_tenant),
+    db: Session = Depends(db_session),
+):
+    # Fetch the event
+    event = db.query(models.Event).filter_by(id=event_id).first()
+    if not event or event.tenant_id != tenant.id:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    # Create a new delivery record
+    delivery = models.Delivery(
+        event_id=event.id, attempts=0, status=0, response="manual replay"  # queued
+    )
+    db.add(delivery)
+    db.commit()
+
+    # Queue the event for delivery
+    forward_event.delay(str(event.id), attempt=1)
+
+    return {"status": "queued", "event_id": event.id}
+
+
 # ---------- ingress ----------
 @app.post("/in/{token}")
 async def ingest_webhook(

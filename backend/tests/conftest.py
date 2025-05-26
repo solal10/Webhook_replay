@@ -7,6 +7,7 @@ import pytest
 from celery import Task
 from fastapi.testclient import TestClient
 from moto import mock_aws
+from passlib.hash import bcrypt
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -93,6 +94,11 @@ def test_tenant(db: Session) -> models.Tenant:
     logger.info(
         f"Created tenant with ID {tenant.id}, verified in DB: {found is not None}"
     )
+    # Create API key
+    api_key = models.ApiKey(tenant_id=tenant.id, hashed_key=bcrypt.hash("test_key"))
+    db.add(api_key)
+    db.commit()
+    db.refresh(tenant)
     return tenant
 
 

@@ -44,3 +44,8 @@ class EventOut(BaseModel):
 
     class Config:
         orm_mode = True
+
+
+class EventReplayResponse(BaseModel):
+    status: str
+    event_id: int
