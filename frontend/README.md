@@ -1,17 +1,21 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Webhook Replay Frontend
+
+This is a [Next.js](https://nextjs.org) frontend for the Webhook Replay service. It allows users to store their API key and access the webhook management dashboard.
 
 ## Getting Started
 
-First, run the development server:
+## Usage
 
 ```bash
+cd frontend
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```
+
+## Testing
+
+```bash
+npm test
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
