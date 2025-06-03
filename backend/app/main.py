@@ -3,19 +3,23 @@ import json
 from datetime import UTC, datetime
 
 import boto3
+import redis.asyncio as redis
 import stripe
 from app.core.config import get_settings
 from app.db import crud, models, schemas
 from app.db.session import SessionLocal
+from app.middleware import MaxBodySizeMiddleware
 from app.services import stripe_verify
 from app.tasks import forward_event
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi_limiter import FastAPILimiter
+from fastapi_limiter.depends import RateLimiter
 from sqlalchemy.orm import Session
 from stripe.error import SignatureVerificationError
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI()
+app = FastAPI(dependencies=[Depends(RateLimiter(times=100, seconds=60))])
 bearer_scheme = HTTPBearer()
 
 # Maximum payload size (1MB)
@@ -45,6 +49,14 @@ else:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+# Add max body size middleware
+app.add_middleware(MaxBodySizeMiddleware)
+
+
+@app.on_event("startup")
+async def startup():
+    await FastAPILimiter.init(redis.from_url(settings.redis_url, decode_responses=True))
 
 
 # ---------- dependency ----------
@@ -172,7 +184,7 @@ def replay_event(
 
 
 # ---------- ingress ----------
-@app.post("/in/{token}")
+@app.post("/in/{token}", dependencies=[Depends(RateLimiter(times=30, seconds=60))])
 async def ingest_webhook(
     token: str,
     request: Request,

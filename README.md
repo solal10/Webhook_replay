@@ -170,3 +170,33 @@ You need three terminals:
 - Pre-commit hooks are configured for code formatting and migration checks
 - Run `pre-commit install` to set up git hooks
 - Run `pre-commit run --all-files` to check all files
+
+## Rate Limiting
+
+The API implements rate limiting to protect against abuse:
+
+- Global rate limit: 100 requests per 60 seconds per IP address
+- Per-tenant rate limit: 30 requests per 60 seconds per tenant
+- Maximum payload size: 1 MiB (1,048,576 bytes)
+
+Rate limit responses will return a 429 status code with the following JSON:
+```json
+{
+    "detail": "Rate limit exceeded"
+}
+```
+
+Payload size limit responses will return a 413 status code with the following JSON:
+```json
+{
+    "detail": "Payload too large"
+}
+```
+
+## Configuration
+
+The service requires Redis for rate limiting. Configure the Redis connection using the `REDIS_URL` environment variable:
+
+```bash
+REDIS_URL=redis://localhost:6379/2
+```

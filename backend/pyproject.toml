@@ -6,7 +6,7 @@ authors = [
     {name = "solalohana",email = "solalohana@gmail.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.9,<4.0"
 dependencies = [
     "fastapi (>=0.115.12,<0.116.0)",
     "uvicorn[standard] (>=0.34.2,<0.35.0)",
@@ -26,7 +26,8 @@ dependencies = [
     "python-multipart (>=0.0.20,<0.0.21)",
     "stripe (>=12.1.0,<13.0.0)",
     "celery[redis] (>=5.3.6,<6.0.0)",
-    "respx (>=0.20.2,<0.21.0)"
+    "respx (>=0.20.2,<0.21.0)",
+    "fastapi-limiter[redis] (>=0.1.6,<0.2.0)"
 ]
 
 [tool.poetry]
@@ -41,3 +42,4 @@ build-backend = "poetry.core.masonry.api"
 pytest = "^8.3.5"
 moto = {extras = ["s3"], version = "^5.1.4"}
 freezegun = "^1.5.2"
+fakeredis = "^2.20.1"

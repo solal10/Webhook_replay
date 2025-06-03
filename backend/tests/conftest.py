@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from unittest.mock import patch
+from typing import Iterator
 
 import boto3
 import pytest
@@ -10,6 +11,14 @@ from moto import mock_aws
 from passlib.hash import bcrypt
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
+import redis.asyncio as aioredis
+from fastapi_limiter import FastAPILimiter
+import asyncio
+import logging
+import fakeredis.aioredis
+import time
+from fastapi import Depends, HTTPException
+import secrets
 
 # Set test environment variables
 test_db_url = os.getenv(
@@ -23,6 +32,7 @@ os.environ.update(
         "EVENTS_BUCKET": "events-dev",
         "API_KEY_SALT": "test_salt",
         "FRONTEND_URL": "http://localhost:3000",
+        "REDIS_URL": "redis://localhost:6379/2",  # Use a separate Redis DB for testing
     }
 )
 
@@ -33,6 +43,8 @@ from app.db import models
 from app.db.models import Base
 from app.db.session import SessionLocal, engine
 from app.main import app
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture(autouse=True)
@@ -54,12 +66,8 @@ def db_engine():
     engine.dispose()
 
 
-@pytest.fixture
-def db(db_engine) -> Session:
-    import logging
-
-    logger = logging.getLogger(__name__)
-
+@pytest.fixture(scope="session")
+def db(db_engine) -> Iterator[Session]:
     logger.info("Starting database transaction")
     connection = db_engine.connect()
     transaction = connection.begin()
@@ -77,20 +85,18 @@ def db(db_engine) -> Session:
 
 @pytest.fixture
 def test_tenant(db: Session) -> models.Tenant:
-    import logging
-
-    logger = logging.getLogger(__name__)
-
     logger.info("Creating test tenant...")
+    # Generate a unique token
+    token = secrets.token_urlsafe(8)
     tenant = models.Tenant(
-        name="TestTenant", token="abc123", stripe_signing_secret="whsec_test"
+        name="TestTenant", token=token, stripe_signing_secret="whsec_test"
     )
     db.add(tenant)
     db.commit()
     db.refresh(tenant)
 
     # Verify tenant exists
-    found = db.query(models.Tenant).filter_by(token="abc123").first()
+    found = db.query(models.Tenant).filter_by(token=token).first()
     logger.info(
         f"Created tenant with ID {tenant.id}, verified in DB: {found is not None}"
     )
@@ -104,19 +110,17 @@ def test_tenant(db: Session) -> models.Tenant:
 
 @pytest.fixture(autouse=True)
 def setup_database(db_engine):
-    import logging
-
-    logger = logging.getLogger(__name__)
     logger.info("Setting up database...")
     try:
+        # Drop all tables first to ensure clean state
+        Base.metadata.drop_all(db_engine)
+        # Create all tables
         Base.metadata.create_all(db_engine)
         # Log table constraints before creation
         for table in Base.metadata.tables.values():
             logger.info(f"Table {table.name} constraints:")
             for const in table.constraints:
                 logger.info(f"  - {const}")
-
-        Base.metadata.create_all(engine)
         logger.info("Database setup complete")
     except Exception as e:
         logger.error(f"Error setting up database: {e}")
@@ -124,7 +128,7 @@ def setup_database(db_engine):
     yield
     logger.info("Tearing down database...")
     try:
-        Base.metadata.drop_all(engine)
+        Base.metadata.drop_all(db_engine)
         logger.info("Database teardown complete")
     except Exception as e:
         logger.error(f"Error tearing down database: {e}")
@@ -151,25 +155,78 @@ def app():
     return app
 
 
-@pytest.fixture
-def client(app, db, settings) -> TestClient:
-    from app.core.config import get_settings
-    from app.main import db_session
+@pytest.fixture(scope="session")
+def event_loop():
+    """Create an instance of the default event loop for each test case."""
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+    yield loop
+    loop.close()
 
-    # Override settings
-    def get_test_settings():
-        return settings
 
-    # Override database session
-    def get_test_db():
-        # Create a new session with the same connection
-        test_session = Session(bind=db.connection())
-        try:
-            yield test_session
-        finally:
-            test_session.close()
+@pytest.fixture(scope="session")
+async def redis_client():
+    """Create a fake Redis client for testing."""
+    logger.info("Creating fake Redis client...")
+    client = await fakeredis.aioredis.create_redis_pool()
+    logger.info("Fake Redis client created successfully")
+    yield client
+    logger.info("Closing fake Redis client...")
+    client.close()
+    await client.wait_closed()
+    logger.info("Fake Redis client closed")
 
-    app.dependency_overrides[get_settings] = get_test_settings
-    app.dependency_overrides[db_session] = get_test_db
-    yield TestClient(app)
+
+@pytest.fixture(scope="session")
+def db():
+    """Create a test database session."""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+class MockRateLimiter:
+    def __init__(self, times: int, seconds: int):
+        self.times = times
+        self.seconds = seconds
+        self.requests = []
+        logger.info(
+            f"Initialized MockRateLimiter with times={times}, seconds={seconds}"
+        )
+
+    def __call__(self):
+        now = time.time()
+        # Remove old requests
+        self.requests = [
+            req_time for req_time in self.requests if now - req_time < self.seconds
+        ]
+        logger.info(f"Current request count: {len(self.requests)}/{self.times}")
+
+        if len(self.requests) >= self.times:
+            logger.info("Rate limit exceeded")
+            raise HTTPException(status_code=429, detail="Too many requests")
+
+        self.requests.append(now)
+        logger.info(f"Request allowed, new count: {len(self.requests)}/{self.times}")
+        return self
+
+
+@pytest.fixture(scope="session")
+def client(db):
+    """Create a test client with a test database."""
+    from app.main import app, db_session
+    from fastapi_limiter.depends import RateLimiter
+
+    app.dependency_overrides[db_session] = lambda: db
+
+    # Override rate limiter with mock
+    mock_limiter = MockRateLimiter(times=30, seconds=60)
+    app.dependency_overrides[RateLimiter] = lambda: mock_limiter
+    logger.info("Rate limiter dependency overridden with mock")
+
+    with TestClient(app) as test_client:
+        logger.info("Test client created")
+        yield test_client
     app.dependency_overrides.clear()
+    logger.info("Test client closed")
