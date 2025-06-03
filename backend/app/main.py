@@ -13,12 +13,38 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 from stripe.error import SignatureVerificationError
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 bearer_scheme = HTTPBearer()
 
 # Maximum payload size (1MB)
 MAX_PAYLOAD_SIZE = 1024 * 1024
+
+# CORS lockdown: allow * in dev, restrict in prod
+settings = get_settings()
+
+if (
+    settings.model_config.get("env_file") == ".env"
+    or settings.frontend_url == "http://localhost:3000"
+):
+    # Dev: allow all
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    # Production: restrict to frontend_url
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[settings.frontend_url],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
 # ---------- dependency ----------
@@ -55,17 +81,9 @@ def current_tenant(
     return tenant
 
 
-@app.get("/health")
+@app.get("/health", include_in_schema=False)
 async def health():
-    return {
-        "status": "ok",
-        "settings": {
-            "database_url": get_settings().database_url,
-            "stripe_signing_secret": get_settings().stripe_signing_secret,
-            "aws_region": get_settings().aws_region,
-            "events_bucket": get_settings().events_bucket,
-        },
-    }
+    return {"status": "ok"}
 
 
 # ---------- signup ----------

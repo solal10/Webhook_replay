@@ -41,4 +41,3 @@ build-backend = "poetry.core.masonry.api"
 pytest = "^8.3.5"
 moto = {extras = ["s3"], version = "^5.1.4"}
 freezegun = "^1.5.2"
-

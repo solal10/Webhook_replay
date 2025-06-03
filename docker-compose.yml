@@ -5,15 +5,17 @@ services:
     container_name: webhook-db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: webhooks
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-webhooks}
     ports:
       - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       retries: 5
+      timeout: 5s
+      start_period: 10s
 
   localstack:
     image: localstack/localstack:latest
@@ -21,16 +23,18 @@ services:
     restart: unless-stopped
     environment:
       - SERVICES=s3
-      - AWS_DEFAULT_REGION=us-east-1
-      - AWS_ACCESS_KEY_ID=test
-      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=${AWS_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-test}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-test}
       - EDGE_PORT=4566
     ports:
       - "4566:4566"
     healthcheck:
-      test: ["CMD", "curl", "http://localhost:4566/_localstack/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
       interval: 5s
       retries: 5
+      timeout: 5s
+      start_period: 10s
 
   redis:
     image: redis:7-alpine
@@ -42,6 +46,8 @@ services:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       retries: 5
+      timeout: 5s
+      start_period: 10s
 
   worker:
     build:
@@ -51,18 +57,25 @@ services:
     restart: unless-stopped
     command: poetry run celery -A app.celery_app worker -Q deliveries --loglevel=info
     environment:
-      - REDIS_URL=redis://redis:6379/0
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/webhooks
-      - STRIPE_SIGNING_SECRET=whsec_test_123
-      - AWS_REGION=us-east-1
-      - API_KEY_SALT=test_salt
-      - FRONTEND_URL=http://localhost:3000
-      - EVENTS_BUCKET=events-dev
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@db:5432/webhooks}
+      - STRIPE_SIGNING_SECRET=${STRIPE_SIGNING_SECRET:-whsec_test_123}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-test}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-test}
+      - AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL:-http://localstack:4566}
+      - API_KEY_SALT=${API_KEY_SALT:-test_salt}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - EVENTS_BUCKET=${EVENTS_BUCKET:-events-dev}
     volumes:
       - ./backend:/app
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
 
   api:
     build:
@@ -72,17 +85,24 @@ services:
     restart: unless-stopped
     command: poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000
     environment:
-      - REDIS_URL=redis://redis:6379/0
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/webhooks
-      - STRIPE_SIGNING_SECRET=whsec_test_123
-      - AWS_REGION=us-east-1
-      - API_KEY_SALT=test_salt
-      - FRONTEND_URL=http://localhost:3000
-      - EVENTS_BUCKET=events-dev
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@db:5432/webhooks}
+      - STRIPE_SIGNING_SECRET=${STRIPE_SIGNING_SECRET:-whsec_test_123}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-test}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-test}
+      - AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL:-http://localstack:4566}
+      - API_KEY_SALT=${API_KEY_SALT:-test_salt}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - EVENTS_BUCKET=${EVENTS_BUCKET:-events-dev}
     ports:
       - "8000:8000"
     volumes:
       - ./backend:/app
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy

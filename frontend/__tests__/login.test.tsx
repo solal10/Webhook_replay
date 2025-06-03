@@ -17,7 +17,7 @@ describe("LoginPage", () => {
 
   it("saves API key and redirects to dashboard", () => {
     render(<LoginPage />);
-    
+
     const input = screen.getByLabelText("API Key");
     const button = screen.getByText("Save & Continue");
 
