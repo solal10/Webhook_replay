@@ -83,7 +83,16 @@ def current_tenant(
 
 @app.get("/health", include_in_schema=False)
 async def health():
-    return {"status": "ok"}
+    settings = get_settings()
+    return {
+        "status": "ok",
+        "settings": {
+            "database_url": settings.database_url,
+            "stripe_signing_secret": settings.stripe_signing_secret,
+            "aws_region": settings.aws_region,
+            "events_bucket": settings.events_bucket,
+        },
+    }
 
 
 # ---------- signup ----------
