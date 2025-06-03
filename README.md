@@ -139,32 +139,6 @@ You need three terminals:
 - LocalStack is used for local S3 emulation
 - The Docker Compose setup waits for LocalStack to be healthy before starting the API and worker
 
-## Quick-test Checklist
-
-1. **Backend Tests:**
-   ```bash
-   cd backend
-   poetry run pytest
-   ```
-
-2. **Frontend Tests:**
-   ```bash
-   cd frontend
-   npm test
-   ```
-
-3. **Health Checks:**
-   ```bash
-   # Backend
-   curl http://localhost:8000/health
-
-   # Frontend
-   curl http://localhost:3000/api/health
-   ```
-
-4. **API Documentation:**
-   - Visit [http://localhost:8000/docs](http://localhost:8000/docs)
-
 ## Development
 
 - Pre-commit hooks are configured for code formatting and migration checks

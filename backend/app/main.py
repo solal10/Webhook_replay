@@ -56,7 +56,11 @@ app.add_middleware(MaxBodySizeMiddleware)
 
 @app.on_event("startup")
 async def startup():
+    # Initialize FastAPILimiter with Redis client
     await FastAPILimiter.init(redis.from_url(settings.redis_url, decode_responses=True))
+    # Ensure FastAPILimiter is initialized before any requests are processed
+    if not FastAPILimiter.redis:
+        raise Exception("FastAPILimiter initialization failed")
 
 
 # ---------- dependency ----------

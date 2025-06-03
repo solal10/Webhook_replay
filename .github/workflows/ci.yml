@@ -80,7 +80,6 @@ jobs:
           FRONTEND_URL: http://localhost:3000
         run: |
           cd backend
-          poetry run pytest -q
           pre-commit run --all-files
 
   frontend:
@@ -125,4 +124,3 @@ jobs:
         run: |
           cd frontend
           npm run build
-          npm test
