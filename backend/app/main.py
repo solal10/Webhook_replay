@@ -18,8 +18,14 @@ from fastapi_limiter.depends import RateLimiter
 from sqlalchemy.orm import Session
 from stripe.error import SignatureVerificationError
 from fastapi.middleware.cors import CORSMiddleware
+from app.middleware.body_size import BodySizeLimitMiddleware
 
-app = FastAPI(dependencies=[Depends(RateLimiter(times=100, seconds=60))])
+app = FastAPI(
+    title="Webhook Replay Service",
+    description="A service for replaying webhooks",
+    version="1.0.0",
+    dependencies=[Depends(RateLimiter(times=100, seconds=60))],  # Global rate limit
+)
 bearer_scheme = HTTPBearer()
 
 # Maximum payload size (1MB)
@@ -53,14 +59,15 @@ else:
 # Add max body size middleware
 app.add_middleware(MaxBodySizeMiddleware)
 
+# Add body size middleware
+app.add_middleware(BodySizeLimitMiddleware)
+
 
 @app.on_event("startup")
 async def startup():
-    # Initialize FastAPILimiter with Redis client
-    await FastAPILimiter.init(redis.from_url(settings.redis_url, decode_responses=True))
-    # Ensure FastAPILimiter is initialized before any requests are processed
-    if not FastAPILimiter.redis:
-        raise Exception("FastAPILimiter initialization failed")
+    """Initialize rate limiter on startup."""
+    redis_conn = redis.from_url(settings.REDIS_URL, decode_responses=True)
+    await FastAPILimiter.init(redis_conn)
 
 
 # ---------- dependency ----------
@@ -188,7 +195,10 @@ def replay_event(
 
 
 # ---------- ingress ----------
-@app.post("/in/{token}", dependencies=[Depends(RateLimiter(times=30, seconds=60))])
+@app.post(
+    "/in/{token}",
+    dependencies=[Depends(RateLimiter(times=30, seconds=60))],  # Per-tenant rate limit
+)
 async def ingest_webhook(
     token: str,
     request: Request,
