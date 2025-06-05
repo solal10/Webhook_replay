@@ -25,7 +25,7 @@ python-jose = ">=3.4.0,<4.0.0"
 python-multipart = ">=0.0.20,<0.0.21"
 stripe = ">=12.1.0,<13.0.0"
 celery = {extras = ["redis"], version = ">=5.3.6,<6.0.0"}
-fastapi-limiter = {extras = ["redis"], version = ">=0.1.6,<0.2.0"}
+fastapi-limiter = {version = ">=0.1.6", extras = ["redis"]}
 
 [tool.poetry.group.dev.dependencies]
 
