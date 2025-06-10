@@ -18,8 +18,9 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # load database url from App settings
-settings = get_settings()
-config.set_main_option("sqlalchemy.url", settings.database_url)
+db_url = get_settings().database_url
+print(f"\n[ALEMBIC] Using database URL: {db_url}\n")
+config.set_main_option("sqlalchemy.url", db_url)
 
 # add your model's MetaData object here
 # for 'autogenerate' support
@@ -51,6 +52,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        render_as_batch=True,  # Enable batch mode for SQLite
     )
 
     with context.begin_transaction():
@@ -71,7 +73,11 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            render_as_batch=True,  # Enable batch mode for SQLite
+        )
 
         with context.begin_transaction():
             context.run_migrations()

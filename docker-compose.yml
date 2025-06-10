@@ -57,8 +57,8 @@ services:
     restart: unless-stopped
     command: poetry run celery -A app.celery_app worker -Q deliveries --loglevel=info
     environment:
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/webhooks
+      - REDIS_URL=${REDIS_URL:-redis://webhook-redis:6379/0}
+      - DATABASE_URL=postgresql://postgres:postgres@webhook-db:5432/webhooks
       - STRIPE_SIGNING_SECRET=${STRIPE_SIGNING_SECRET:-whsec_test_123}
       - AWS_REGION=us-east-1
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-test}
@@ -85,8 +85,8 @@ services:
     restart: unless-stopped
     command: poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000
     environment:
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/webhooks
+      - REDIS_URL=${REDIS_URL:-redis://webhook-redis:6379/0}
+      - DATABASE_URL=postgresql://postgres:postgres@webhook-db:5432/webhooks
       - STRIPE_SIGNING_SECRET=${STRIPE_SIGNING_SECRET:-whsec_test_123}
       - AWS_REGION=us-east-1
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-test}

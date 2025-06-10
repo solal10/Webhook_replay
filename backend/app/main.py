@@ -8,9 +8,9 @@ import stripe
 from app.core.config import get_settings
 from app.db import crud, models, schemas
 from app.db.session import SessionLocal
-from app.middleware import MaxBodySizeMiddleware
 from app.services import stripe_verify
 from app.tasks import forward_event
+from app.storage.boot_s3 import ensure_secure_bucket
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi_limiter import FastAPILimiter
@@ -19,6 +19,11 @@ from sqlalchemy.orm import Session
 from stripe.error import SignatureVerificationError
 from fastapi.middleware.cors import CORSMiddleware
 from app.middleware.body_size import BodySizeLimitMiddleware
+from app.middleware.security_headers import SecurityHeadersMiddleware
+from app.schemas.ingest import WebhookPayload
+from pydantic import ValidationError
+import logging
+import sqlalchemy.exc
 
 app = FastAPI(
     title="Webhook Replay Service",
@@ -34,49 +39,58 @@ MAX_PAYLOAD_SIZE = 1024 * 1024
 # CORS lockdown: allow * in dev, restrict in prod
 settings = get_settings()
 
-if (
-    settings.model_config.get("env_file") == ".env"
-    or settings.frontend_url == "http://localhost:3000"
-):
-    # Dev: allow all
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-else:
-    # Production: restrict to frontend_url
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[settings.frontend_url],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
-# Add max body size middleware
-app.add_middleware(MaxBodySizeMiddleware)
-
 # Add body size middleware
 app.add_middleware(BodySizeLimitMiddleware)
+
+# Add security headers middleware
+app.add_middleware(SecurityHeadersMiddleware)
+
+# Add CORS middleware using settings.allowed_origins
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.allowed_origins.split(","),
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+    allow_credentials=True,
+)
 
 
 @app.on_event("startup")
 async def startup():
-    """Initialize rate limiter on startup."""
-    redis_conn = redis.from_url(settings.REDIS_URL, decode_responses=True)
-    await FastAPILimiter.init(redis_conn)
+    """Initialize services on startup."""
+    try:
+        # Initialize rate limiter
+        redis_conn = redis.from_url(settings.redis_url, decode_responses=True)
+        await FastAPILimiter.init(redis_conn)
+
+        # Initialize S3 bucket with security settings
+        ensure_secure_bucket()
+    except Exception as e:
+        print(f"Warning: Failed to initialize services: {e}")
+        # Continue without rate limiting
+
+
+logger = logging.getLogger(__name__)
 
 
 # ---------- dependency ----------
 def db_session():
-    db: Session = SessionLocal()
     try:
-        yield db
-    finally:
-        db.close()
+        db: Session = SessionLocal()
+        logger.info("Database session created successfully")
+        try:
+            yield db
+        finally:
+            db.close()
+            logger.info("Database session closed")
+    except Exception as e:
+        if isinstance(e, (sqlalchemy.exc.SQLAlchemyError, sqlalchemy.exc.DBAPIError)):
+            logger.error(f"Database error: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Database connection failed",
+            )
+        raise  # Re-raise non-database exceptions
 
 
 def get_s3_client():
@@ -205,10 +219,13 @@ async def ingest_webhook(
     db: Session = Depends(db_session),
     s3_client: boto3.client = Depends(get_s3_client),
 ):
-    import logging
-
-    logger = logging.getLogger(__name__)
     logger.info(f"Received webhook for token: {token}")
+
+    # Check for empty payload
+    content_length = request.headers.get("content-length", "0")
+    if content_length == "0":
+        raise HTTPException(status_code=400, detail="Empty JSON body")
+
     # Look up tenant by token
     logger.info(f"Looking up tenant with token {token} using session {id(db)}")
     tenant: models.Tenant | None = (
@@ -222,24 +239,24 @@ async def ingest_webhook(
         if not tenant:
             raise HTTPException(status_code=404, detail="Not Found")
 
-    # Check payload size
-    content_length = request.headers.get("content-length", 0)
-    if int(content_length) > MAX_PAYLOAD_SIZE:
-        raise HTTPException(status_code=413, detail="Payload too large")
-
-    # Read request body first
     try:
-        logger.info("Reading request body...")
+        # Read and parse request body
         raw = await request.body()
-        logger.info("Request body read successfully")
+        if not raw:
+            raise HTTPException(status_code=400, detail="Empty JSON body")
+
+        # Parse and validate payload
+        try:
+            payload = WebhookPayload.model_validate_json(raw)
+        except ValidationError as ve:
+            raise HTTPException(status_code=400, detail=ve.errors())
+
+        # Convert payload to JSON string for storage
+        raw = payload.model_dump_json().encode()
         raw_str = raw.decode()
         logger.info(f"Raw body str: {raw_str}")
         logger.info(f"Raw body bytes: {raw}")
         logger.info(f"Raw body repr: {repr(raw_str)}")
-
-        # Check for empty payload
-        if not raw:
-            raise HTTPException(status_code=400, detail="Empty payload not allowed")
 
         # Verify Stripe signature before parsing JSON
         logger.info("Checking for Stripe signature...")
@@ -273,25 +290,6 @@ async def ingest_webhook(
         except stripe_verify.StripeSignatureError:
             raise HTTPException(status_code=400, detail="Invalid Stripe signature")
 
-        # Parse JSON payload after signature verification
-        try:
-            logger.info("Parsing JSON payload...")
-            payload = json.loads(raw)
-            logger.info("JSON payload parsed successfully")
-        except json.JSONDecodeError:
-            raise HTTPException(status_code=400, detail="Invalid JSON payload")
-
-        # Check for empty payload
-        if not payload:
-            raise HTTPException(status_code=400, detail="Empty payload not allowed")
-
-        # Check for size limit
-        if len(raw) > MAX_PAYLOAD_SIZE:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Payload too large. Maximum size is {MAX_PAYLOAD_SIZE} bytes",
-            )
-
         # Compute SHA-256 hash
         sha256 = hashlib.sha256(raw).hexdigest()
 
@@ -301,7 +299,10 @@ async def ingest_webhook(
         )
         if not existing_event:
             event = models.Event(
-                tenant_id=tenant.id, sha256=sha256, payload=payload, duplicate=False
+                tenant_id=tenant.id,
+                sha256=sha256,
+                payload=payload.model_dump(),
+                duplicate=False,
             )
             db.add(event)
             db.commit()

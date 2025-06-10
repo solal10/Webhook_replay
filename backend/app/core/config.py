@@ -16,7 +16,10 @@ class Settings(BaseSettings):
     aws_access_key_id: str = "test"
     aws_secret_access_key: str = "test"
     aws_endpoint_url: str | None = None
-    redis_url: str = "redis://localhost:6379/2"
+    redis_url: str = "redis://webhook-redis:6379/2"
+    allowed_origins: str = (
+        "http://localhost:3000,https://app.example.com"  # Default allowed origins
+    )
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
