@@ -5,9 +5,16 @@ services:
     container_name: webhook-db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-webhooks}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: webhooks
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    command: >
+      postgres -c wal_level=logical
+               -c max_wal_senders=5
+               -c max_replication_slots=5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
@@ -106,3 +113,6 @@ services:
         condition: service_healthy
       localstack:
         condition: service_healthy
+
+volumes:
+  postgres_data:
